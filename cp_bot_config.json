@@ -1,0 +1,17 @@
+{
+  "token": "7885732786:AAGEiJEJQlnROVABuppTaP_hBYiRXFhyO1U",
+  "admin_username": "@REDDOT016",
+  "cp_packages": [
+    { "amount": "3000 CP", "usd_price": "$25.70", "naira_price": "₦40,000" },
+    { "amount": "5000 CP", "usd_price": "$37.26", "naira_price": "₦58,000" },
+    { "amount": "10000 CP", "usd_price": "$48.18", "naira_price": "₦75,000" },
+    { "amount": "10800 CP", "usd_price": "$51.39", "naira_price": "₦80,000" },
+    { "amount": "15000 CP", "usd_price": "$77.09", "naira_price": "₦120,000" },
+    { "amount": "20000 CP", "usd_price": "$89.94", "naira_price": "₦140,000" }
+  ],
+  "payment_method": {
+    "type": "Crypto",
+    "coin": "Solana",
+    "address": "2BW8GnRa36iy5V9ihJZrssPYYfx37G16z8JSFdVfUrsg"
+  }
+}
