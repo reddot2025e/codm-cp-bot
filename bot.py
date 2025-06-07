@@ -1,59 +1,74 @@
+import logging
 from aiogram import Bot, Dispatcher, types, executor
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
-import json
+import os
 
-# Load config
-with open("cp_bot_config.json", "r") as f:
-    config = json.load(f)
+# Load from environment variable
+API_TOKEN = os.getenv("API_TOKEN")
 
-API_TOKEN = config['token']
-ADMIN_USERNAME = config['admin_username']
+# === CONFIGURATION ===
+ADMIN_USERNAME = "@REDDOT016"
+SOLANA_WALLET = "2BW8GnRa36iy5V9ihJZrssPYYfx37G16z8JSFdVfUrsg"
 
+# CODM CP Packages
+CP_PACKAGES = {
+    "3000 CP": "₦40,000",
+    "5000 CP": "₦58,000",
+    "10000 CP": "₦75,000",
+    "10800 CP": "₦80,000",
+    "15000 CP": "₦120,000",
+    "20000 CP": "₦140,000"
+}
+
+# === BOT SETUP ===
+logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot, storage=MemoryStorage())
+dp = Dispatcher(bot)
 
-class OrderForm(StatesGroup):
-    waiting_for_uid = State()
-    waiting_for_payment = State()
+# Temporary user data
+user_data = {}
 
-@dp.message_handler(commands=['start'])
-async def start_cmd(message: types.Message):
-    kb = InlineKeyboardMarkup(row_width=1)
-    for pkg in config['cp_packages']:
-        text = f"{pkg['amount']} – {pkg['usd_price']} ({pkg['naira_price']})"
-        kb.add(InlineKeyboardButton(text=text, callback_data=pkg['amount']))
-    await message.answer("Welcome! Select a CP package:", reply_markup=kb)
+# === START COMMAND ===
+@dp.message_handler(commands=["start"])
+async def start(message: types.Message):
+    keyboard = types.InlineKeyboardMarkup()
+    for cp, price in CP_PACKAGES.items():
+        keyboard.add(types.InlineKeyboardButton(f"{cp} ({price})", callback_data=cp))
+    await message.answer("🎮 Welcome!\nSelect a CP package below:", reply_markup=keyboard)
 
-@dp.callback_query_handler(lambda c: c.data.endswith('CP'))
-async def package_selected(callback_query: types.CallbackQuery):
-    pkg = callback_query.data
-    await bot.send_message(callback_query.from_user.id, f"You selected {pkg}. Please enter your UID:")
-    state = dp.current_state(user=callback_query.from_user.id)
-    await state.set_state(OrderForm.waiting_for_uid.state)
-    await state.update_data(package=pkg)
+# === PACKAGE SELECTED ===
+@dp.callback_query_handler(lambda c: c.data in CP_PACKAGES)
+async def handle_package_selection(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
+    selected = callback_query.data
+    user_data[user_id] = {"cp": selected}
+    await bot.send_message(user_id, f"You selected *{selected}*\n\nNow enter your UID:", parse_mode="Markdown")
+    await bot.answer_callback_query(callback_query.id)
 
-@dp.message_handler(state=OrderForm.waiting_for_uid)
-async def process_uid(message: types.Message, state: FSMContext):
-    await state.update_data(uid=message.text)
-    await message.answer("Send a screenshot of your payment to this wallet:\n\n" +
-                         f"Solana Address: `{config['payment_method']['address']}`",
-                         parse_mode='Markdown')
-    await OrderForm.next()
+# === UID COLLECTED ===
+@dp.message_handler(lambda message: message.chat.id in user_data and "uid" not in user_data[message.chat.id])
+async def get_uid(message: types.Message):
+    user_id = message.chat.id
+    user_data[user_id]["uid"] = message.text
 
-@dp.message_handler(content_types=types.ContentType.PHOTO, state=OrderForm.waiting_for_payment)
-async def process_payment(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    package = data['package']
-    uid = data['uid']
-    admin_msg = (f"📥 *New Order Received!*\n"
-                 f"👤 User: @{message.from_user.username or message.from_user.id}\n"
-                 f"🎮 Package: {package}\n🆔 UID: {uid}")
-    await bot.send_photo(chat_id=ADMIN_USERNAME, photo=message.photo[-1].file_id, caption=admin_msg, parse_mode='Markdown')
-    await message.answer("✅ Your order has been submitted! You'll be contacted shortly.")
-    await state.finish()
+    # Step 1: Instruction
+    await message.answer("💸 Send a screenshot of your payment to the wallet below:\n\nSolana Address:")
 
+    # Step 2: Address sent separately (copyable)
+    await message.answer(SOLANA_WALLET)
+
+    # === ADMIN ALERT ===
+    cp = user_data[user_id]["cp"]
+    uid = user_data[user_id]["uid"]
+    username = message.from_user.username or "No username"
+    admin_message = (
+        f"📥 New CP Order!\n\n"
+        f"👤 User: @{username}\n"
+        f"📦 Package: {cp}\n"
+        f"🆔 UID: {uid}\n"
+        f"💰 Price: {CP_PACKAGES[cp]}"
+    )
+    await bot.send_message(chat_id=ADMIN_USERNAME, text=admin_message)
+
+# === START BOT ===
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
